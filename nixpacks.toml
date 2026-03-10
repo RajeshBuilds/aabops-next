@@ -1,0 +1,18 @@
+# Nixpacks config for Coolify deployment
+# Adds Java runtime (required by bundletool) and downloads bundletool during build
+
+[phases.setup]
+nixPkgs = ["jdk17_headless"]
+
+[phases.install]
+cmds = [
+  "pnpm install --frozen-lockfile",
+  "mkdir -p /opt/bundletool",
+  "curl -sL -o /opt/bundletool/bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar"
+]
+
+[phases.build]
+cmds = ["pnpm run build"]
+
+[start]
+cmd = "node .next/standalone/server.js"
