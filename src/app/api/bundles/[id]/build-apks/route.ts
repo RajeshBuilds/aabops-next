@@ -68,11 +68,12 @@ export async function POST(
       },
     });
 
-    // Schedule cleanup after a delay to allow streaming to complete
+    // Temp APKS lives in TEMP_DIR (e.g. /tmp/aabops/build-<id>/output.apks).
+    // Schedule cleanup 60s after response so the client can finish receiving the stream.
     const pathToClean = apksPath;
     setTimeout(() => {
       cleanupBuildDir(pathToClean);
-    }, 60000); // 1 minute delay
+    }, 60000);
 
     return response;
   } catch (error) {

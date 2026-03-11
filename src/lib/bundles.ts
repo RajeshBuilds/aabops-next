@@ -79,7 +79,11 @@ export async function saveBundle(
     versionCode = aabInfo.versionCode;
     appLabel = aabInfo.appLabel;
   } catch (err) {
-    console.warn("Failed to extract AAB metadata with bundletool, using defaults:", err);
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("Failed to extract AAB metadata with bundletool, using defaults:", msg);
+    if (err instanceof Error && err.stack) {
+      console.warn("Stack:", err.stack);
+    }
   }
 
   // For the display name: use user-provided name, or app label from manifest, or package name

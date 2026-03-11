@@ -8,7 +8,7 @@ nixPkgs = ["jdk17_headless"]
 cmds = [
   "pnpm install --frozen-lockfile",
   "mkdir -p /opt/bundletool",
-  "curl -sL -o /opt/bundletool/bundletool.jar https://github.com/google/bundletool/releases/download/1.17.2/bundletool-all-1.17.2.jar"
+  "curl -sL -o /opt/bundletool/bundletool.jar https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar"
 ]
 
 [phases.build]
