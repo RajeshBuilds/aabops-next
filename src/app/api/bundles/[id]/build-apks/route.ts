@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import fs from "fs/promises";
+import { createReadStream } from "fs";
+import { Readable } from "stream";
 import { getBundle, getBundleAabPath } from "@/lib/bundles";
 import { buildApks, cleanupBuildDir } from "@/lib/bundletool";
 import type { DeviceSpec } from "@/lib/types";
@@ -57,10 +59,10 @@ export async function POST(
 
     // Stream the APKS file back
     const stat = await fs.stat(apksPath);
-    const fileHandle = await fs.open(apksPath, "r");
-    const stream = fileHandle.readableWebStream();
+    const nodeStream = createReadStream(apksPath);
+    const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
 
-    const response = new Response(stream as ReadableStream, {
+    const response = new Response(webStream, {
       headers: {
         "Content-Type": "application/octet-stream",
         "Content-Disposition": `attachment; filename="${bundle.name.replace(/[^a-zA-Z0-9.-]/g, "_")}.apks"`,
