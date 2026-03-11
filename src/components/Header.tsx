@@ -10,7 +10,7 @@ export default function Header() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight">AAB Ops</h1>
           <p className="text-sm text-muted-foreground">
-            Enterprise AAB Distribution Channel
+            Internal AAB Distribution Simplified
           </p>
         </div>
       </div>
