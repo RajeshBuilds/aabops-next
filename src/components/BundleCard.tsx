@@ -28,15 +28,17 @@ export default function BundleCard({ bundle }: { bundle: BundleMetadata }) {
             <Badge variant="outline">Code: {bundle.versionCode}</Badge>
           </div>
 
-          <div className="flex items-center gap-4 mt-1.5 text-xs text-muted-foreground">
-            <span className="truncate">{bundle.originalFilename}</span>
-            <span className="flex items-center gap-1 shrink-0">
-              <HardDrive className="h-3 w-3" />
-              {formatFileSize(bundle.fileSizeBytes)}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate w-full sm:w-auto sm:max-w-[min(12rem,30vw)]">
+              {bundle.originalFilename}
             </span>
-            <span className="flex items-center gap-1 shrink-0">
-              <Calendar className="h-3 w-3" />
-              {format(new Date(bundle.uploadedAt), "MMM d, yyyy h:mm a")}
+            <span className="flex items-center gap-1.5 shrink-0">
+              <HardDrive className="h-3 w-3 shrink-0" />
+              <span>{formatFileSize(bundle.fileSizeBytes)}</span>
+            </span>
+            <span className="flex items-center gap-1.5 shrink-0">
+              <Calendar className="h-3 w-3 shrink-0" />
+              <span>{format(new Date(bundle.uploadedAt), "MMM d, yyyy h:mm a")}</span>
             </span>
           </div>
         </div>

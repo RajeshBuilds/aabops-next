@@ -43,6 +43,13 @@ export default function BundleActionsMenu({ bundle }: { bundle: BundleMetadata }
 
   const handleDownloadApks = () => {
     setDownloadingApks(true);
+    const displayName = bundle.name;
+    const fileName = bundle.originalFilename || `${bundle.name}.aab`;
+
+    const toastId = toast.loading(`Generating APKS for ${displayName}...`, {
+      description: `Converting ${fileName} to APKS. This may take 30–60 seconds.`,
+    });
+
     const downloadPromise = (async () => {
       const res = await fetch(`/api/bundles/${bundle.id}/build-apks`, {
         method: "POST",
@@ -62,15 +69,20 @@ export default function BundleActionsMenu({ bundle }: { bundle: BundleMetadata }
       URL.revokeObjectURL(url);
     })();
 
-    toast.promise(downloadPromise, {
-      loading: "Generating APKS...",
-      description:
-        "Bundletool is converting your AAB to APKS. This may take 30–60 seconds.",
-      success: "APKS ready. Download started.",
-      error: (err) => err.message || "Failed to build APKS",
-    });
-
-    downloadPromise.finally(() => setDownloadingApks(false));
+    downloadPromise
+      .then(() => {
+        toast.dismiss(toastId);
+        toast.success(`${displayName} APKS is ready for download.`, {
+          description: "Your download has started.",
+        });
+      })
+      .catch((err) => {
+        toast.dismiss(toastId);
+        toast.error(err.message || "Failed to build APKS", {
+          description: "Please try again or check the bundle.",
+        });
+      })
+      .finally(() => setDownloadingApks(false));
   };
 
   const handleDelete = async () => {
