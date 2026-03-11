@@ -1,8 +1,8 @@
 # Nixpacks config for Coolify deployment
-# Adds Java runtime (required by bundletool) and pnpm; downloads bundletool during build
+# Extends Node provider (which adds pnpm when pnpm-lock.yaml exists); adds JDK for bundletool
 
 [phases.setup]
-nixPkgs = ["...", "jdk17_headless", "pnpm"]
+nixPkgs = ["...", "jdk17_headless"]
 
 [phases.install]
 cmds = [
