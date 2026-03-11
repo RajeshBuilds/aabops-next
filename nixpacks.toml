@@ -12,7 +12,16 @@ cmds = [
 ]
 
 [phases.build]
-cmds = ["pnpm run build"]
+cmds = [
+  "pnpm run build",
+  "cp -r public .next/standalone/ 2>/dev/null || true",
+  "cp -r .next/static .next/standalone/.next/"
+]
 
 [start]
 cmd = "node .next/standalone/server.js"
+
+[variables]
+NODE_ENV = "production"
+HOSTNAME = "0.0.0.0"
+PORT = "3000"
