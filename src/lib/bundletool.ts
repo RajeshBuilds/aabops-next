@@ -1,7 +1,7 @@
 import { execFile } from "child_process";
 import fs from "fs/promises";
 import path from "path";
-import { BUNDLETOOL_PATH, TEMP_DIR } from "./config";
+import { BUNDLETOOL_PATH, BUNDLETOOL_SIGNING, TEMP_DIR } from "./config";
 import type { AabInfo, DeviceSpec } from "./types";
 
 /**
@@ -138,18 +138,29 @@ export async function buildApks(aabPath: string, deviceSpec: DeviceSpec): Promis
 
   await fs.writeFile(deviceSpecPath, JSON.stringify(deviceSpec, null, 2));
 
+  const args = [
+    "-jar",
+    BUNDLETOOL_PATH,
+    "build-apks",
+    `--bundle=${aabPath}`,
+    `--output=${outputPath}`,
+    `--device-spec=${deviceSpecPath}`,
+    "--overwrite",
+  ];
+  // Signing is required for installation; without it, INSTALL_PARSE_FAILED_NO_CERTIFICATES occurs.
+  if (BUNDLETOOL_SIGNING) {
+    args.push(
+      `--ks=${BUNDLETOOL_SIGNING.ksPath}`,
+      `--ks-key-alias=${BUNDLETOOL_SIGNING.ksAlias}`,
+      `--ks-pass=pass:${BUNDLETOOL_SIGNING.ksPass}`,
+      `--key-pass=pass:${BUNDLETOOL_SIGNING.keyPass}`,
+    );
+  }
+
   await new Promise<void>((resolve, reject) => {
     execFile(
       "java",
-      [
-        "-jar",
-        BUNDLETOOL_PATH,
-        "build-apks",
-        `--bundle=${aabPath}`,
-        `--output=${outputPath}`,
-        `--device-spec=${deviceSpecPath}`,
-        "--overwrite",
-      ],
+      args,
       { timeout: 5 * 60 * 1000 }, // 5 minute timeout
       (error, stdout, stderr) => {
         if (error) {
