@@ -46,6 +46,7 @@ export async function POST(
     }
 
     const aabPath = getBundleAabPath(id);
+    console.log("[build-apks] Request:", { bundleId: id, bundleName: bundle.name, aabPath });
 
     // Verify AAB file exists
     try {

@@ -1,5 +1,7 @@
 import { execFile } from "child_process";
+import fsSync from "fs";
 import fs from "fs/promises";
+import os from "os";
 import path from "path";
 import { BUNDLETOOL_PATH, BUNDLETOOL_SIGNING, TEMP_DIR } from "./config";
 import type { AabInfo, DeviceSpec } from "./types";
@@ -138,6 +140,26 @@ export async function buildApks(aabPath: string, deviceSpec: DeviceSpec): Promis
 
   await fs.writeFile(deviceSpecPath, JSON.stringify(deviceSpec, null, 2));
 
+  // Log signing configuration
+  if (BUNDLETOOL_SIGNING) {
+    console.log("[build-apks] Signing enabled:", {
+      ksPath: BUNDLETOOL_SIGNING.ksPath,
+      ksAlias: BUNDLETOOL_SIGNING.ksAlias,
+      ksExists: (await fs.access(BUNDLETOOL_SIGNING.ksPath).then(() => true).catch(() => false)),
+    });
+  } else {
+    const ksPath =
+      process.env.BUNDLETOOL_KS_PATH || path.join(os.homedir(), ".android", "debug.keystore");
+    const exists = fsSync.existsSync(ksPath);
+    console.warn("[build-apks] Signing DISABLED - APKs will be unsigned (install will fail):", {
+      reason: process.env.BUNDLETOOL_KS_PATH
+        ? `BUNDLETOOL_KS_PATH set but file not found`
+        : "BUNDLETOOL_KS_PATH not set and no ~/.android/debug.keystore",
+      checkedPath: ksPath,
+      fileExists: exists,
+    });
+  }
+
   const args = [
     "-jar",
     BUNDLETOOL_PATH,
@@ -157,12 +179,19 @@ export async function buildApks(aabPath: string, deviceSpec: DeviceSpec): Promis
     );
   }
 
+  const redact = (a: string) =>
+    a.includes("=") && a.includes("pass:") ? a.replace(/=.*/, "=***") : a;
+  const cmdDisplay = ["java", ...args.map(redact)].join(" ");
+  console.log("[build-apks] Running:", cmdDisplay);
+
   await new Promise<void>((resolve, reject) => {
     execFile(
       "java",
       args,
       { timeout: 5 * 60 * 1000 }, // 5 minute timeout
       (error, stdout, stderr) => {
+        if (stdout?.trim()) console.log("[build-apks] bundletool stdout:", stdout.trim());
+        if (stderr?.trim()) console.log("[build-apks] bundletool stderr:", stderr.trim());
         if (error) {
           reject(new Error(`Bundletool failed: ${stderr || error.message}`));
           return;
@@ -175,6 +204,8 @@ export async function buildApks(aabPath: string, deviceSpec: DeviceSpec): Promis
   // Verify output file exists
   try {
     await fs.access(outputPath);
+    const stat = await fs.stat(outputPath);
+    console.log("[build-apks] Done:", { outputPath, sizeBytes: stat.size });
   } catch {
     throw new Error("Bundletool completed but output file was not created");
   }
