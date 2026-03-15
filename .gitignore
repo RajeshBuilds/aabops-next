@@ -46,3 +46,4 @@ yarn-error.log*
 next-env.d.ts
 
 /android-client
+public/releases/android-client.apk
