@@ -3,7 +3,8 @@ import fs from "fs/promises";
 import { createReadStream } from "fs";
 import { Readable } from "stream";
 import { getBundle, getBundleAabPath } from "@/lib/bundles";
-import { buildApks, cleanupBuildDir } from "@/lib/bundletool";
+import { getOrBuildCachedApks } from "@/lib/apks-cache";
+import { parseRangeHeader } from "@/lib/http-range";
 import type { DeviceSpec } from "@/lib/types";
 
 function isValidDeviceSpec(spec: unknown): spec is DeviceSpec {
@@ -24,7 +25,6 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
-  let apksPath: string | undefined;
 
   try {
     const bundle = await getBundle(id);
@@ -55,35 +55,38 @@ export async function POST(
       return NextResponse.json({ error: "AAB file not found on disk" }, { status: 404 });
     }
 
-    // Build APKS
-    apksPath = await buildApks(aabPath, deviceSpec);
+    // Build APKS (cached by bundle + device spec to make retries/resume robust)
+    const { apksPath, cacheHit, specHash } = await getOrBuildCachedApks(
+      id,
+      aabPath,
+      deviceSpec,
+    );
+    console.log("[build-apks] Cache:", { bundleId: id, specHash, cacheHit });
 
-    // Stream the APKS file back
+    // Stream the APKS file back, with byte range support for resumable client downloads.
     const stat = await fs.stat(apksPath);
-    const nodeStream = createReadStream(apksPath);
+    const range = parseRangeHeader(request.headers.get("range"), stat.size);
+    const nodeStream = range
+      ? createReadStream(apksPath, { start: range.start, end: range.end })
+      : createReadStream(apksPath);
     const webStream = Readable.toWeb(nodeStream) as ReadableStream<Uint8Array>;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/octet-stream",
+      "Content-Disposition": `attachment; filename="${bundle.name.replace(/[^a-zA-Z0-9.-]/g, "_")}.apks"`,
+      "Accept-Ranges": "bytes",
+      ETag: `"${id}-${specHash}-${stat.size}-${Math.floor(stat.mtimeMs)}"`,
+    };
 
-    const response = new Response(webStream, {
-      headers: {
-        "Content-Type": "application/octet-stream",
-        "Content-Disposition": `attachment; filename="${bundle.name.replace(/[^a-zA-Z0-9.-]/g, "_")}.apks"`,
-        "Content-Length": stat.size.toString(),
-      },
-    });
-
-    // Temp APKS lives in TEMP_DIR (e.g. /tmp/aabops/build-<id>/output.apks).
-    // Schedule cleanup 60s after response so the client can finish receiving the stream.
-    const pathToClean = apksPath;
-    setTimeout(() => {
-      cleanupBuildDir(pathToClean);
-    }, 60000);
-
-    return response;
-  } catch (error) {
-    // Clean up on error
-    if (apksPath) {
-      await cleanupBuildDir(apksPath);
+    if (range) {
+      const chunkLength = range.end - range.start + 1;
+      headers["Content-Length"] = chunkLength.toString();
+      headers["Content-Range"] = `bytes ${range.start}-${range.end}/${stat.size}`;
+      return new Response(webStream, { status: 206, headers });
     }
+
+    headers["Content-Length"] = stat.size.toString();
+    return new Response(webStream, { headers });
+  } catch (error) {
     console.error("Build APKS error:", error);
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Build failed" },

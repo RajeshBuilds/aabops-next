@@ -15,6 +15,9 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 
+const MAX_FILE_SIZE_BYTES = 500 * 1024 * 1024; // 500MB
+const MAX_CHUNK_RETRIES = 3;
+
 export default function UploadForm() {
   const router = useRouter();
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -29,6 +32,10 @@ export default function UploadForm() {
   const handleFile = (f: File | null) => {
     if (f && !f.name.endsWith(".aab")) {
       setError("Only .aab files are accepted");
+      return;
+    }
+    if (f && f.size > MAX_FILE_SIZE_BYTES) {
+      setError(`File size exceeds maximum of ${MAX_FILE_SIZE_BYTES / 1024 / 1024}MB`);
       return;
     }
     setError(null);
@@ -65,6 +72,7 @@ export default function UploadForm() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) return;
+    let sessionId: string | null = null;
 
     setUploading(true);
     setError(null);
@@ -72,48 +80,82 @@ export default function UploadForm() {
     setStatusMessage("Uploading AAB file...");
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (displayName.trim()) {
-        formData.append("name", displayName.trim());
+      const initResp = await fetch("/api/upload-sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: file.name,
+          size: file.size,
+          displayName: displayName.trim() || undefined,
+        }),
+      });
+      const initData = await initResp.json();
+      if (!initResp.ok) {
+        throw new Error(initData?.error || "Failed to initialize upload");
       }
 
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhr.open("POST", "/api/bundles");
+      sessionId = initData.sessionId as string;
+      const chunkSize = initData.chunkSize as number;
+      const totalChunks = Math.ceil(file.size / chunkSize);
 
-        xhr.upload.onprogress = (e) => {
-          if (e.lengthComputable) {
-            const pct = Math.round((e.loaded / e.total) * 100);
-            setUploadProgress(pct);
-            if (pct >= 100) {
-              setStatusMessage("Extracting metadata from AAB...");
+      let uploadedBytes = 0;
+      const uploadChunkWithRetry = async (chunk: Blob, chunkIndex: number) => {
+        let attempt = 0;
+        while (attempt < MAX_CHUNK_RETRIES) {
+          try {
+            const resp = await fetch(`/api/upload-sessions/${sessionId}?chunkIndex=${chunkIndex}`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/octet-stream" },
+              body: chunk,
+            });
+            if (!resp.ok) {
+              const data = await resp.json().catch(() => ({}));
+              throw new Error(data?.error || `Chunk ${chunkIndex + 1} failed`);
             }
-          }
-        };
-
-        xhr.onload = () => {
-          if (xhr.status === 201) {
-            resolve();
-          } else {
-            try {
-              const resp = JSON.parse(xhr.responseText);
-              reject(new Error(resp.error || "Upload failed"));
-            } catch {
-              reject(new Error("Upload failed"));
+            return;
+          } catch (err) {
+            attempt += 1;
+            if (attempt >= MAX_CHUNK_RETRIES) {
+              throw err;
             }
+            const backoffMs = 300 * 2 ** (attempt - 1);
+            await new Promise((res) => setTimeout(res, backoffMs));
           }
-        };
+        }
+      };
 
-        xhr.onerror = () => reject(new Error("Network error"));
-        xhr.send(formData);
+      for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(start + chunkSize, file.size);
+        const chunk = file.slice(start, end);
+
+        setStatusMessage(
+          `Uploading chunk ${chunkIndex + 1}/${totalChunks} (${formatSize(end)} of ${formatSize(file.size)})`,
+        );
+        await uploadChunkWithRetry(chunk, chunkIndex);
+        uploadedBytes += chunk.size;
+        setUploadProgress(Math.round((uploadedBytes / file.size) * 100));
+      }
+
+      setStatusMessage("Extracting metadata from AAB...");
+      const completeResp = await fetch(`/api/upload-sessions/${sessionId}/complete`, {
+        method: "POST",
       });
+      const completeData = await completeResp.json();
+      if (!completeResp.ok) {
+        throw new Error(completeData?.error || "Failed to finalize upload");
+      }
 
       setDisplayName("");
       setFile(null);
       if (fileInputRef.current) fileInputRef.current.value = "";
       router.refresh();
     } catch (err) {
+      if (sessionId) {
+        void fetch(`/api/upload-sessions/${sessionId}`, { method: "DELETE" }).catch(() => {
+          // Ignore cleanup errors; upload has already failed.
+        });
+      }
       setError(err instanceof Error ? err.message : "Upload failed");
     } finally {
       setUploading(false);

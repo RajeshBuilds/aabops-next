@@ -64,6 +64,41 @@ export async function saveBundle(
     readable.on("error", reject);
   });
 
+  return finalizeSavedBundle({
+    id,
+    bundleDir,
+    aabPath,
+    originalFilename: file.name,
+    displayName,
+  });
+}
+
+export async function saveBundleFromPath(
+  sourcePath: string,
+  originalFilename: string,
+  displayName?: string,
+): Promise<BundleMetadata> {
+  await ensureStorageDir();
+
+  const id = uuidv4();
+  const bundleDir = path.join(STORAGE_DIR, id);
+  await fs.mkdir(bundleDir, { recursive: true });
+
+  const aabPath = path.join(bundleDir, "app.aab");
+  await fs.rename(sourcePath, aabPath);
+
+  return finalizeSavedBundle({ id, bundleDir, aabPath, originalFilename, displayName });
+}
+
+async function finalizeSavedBundle(input: {
+  id: string;
+  bundleDir: string;
+  aabPath: string;
+  originalFilename: string;
+  displayName?: string;
+}): Promise<BundleMetadata> {
+  const { id, bundleDir, aabPath, originalFilename, displayName } = input;
+
   const stats = await fs.stat(aabPath);
 
   // Extract metadata from AAB using bundletool
@@ -93,7 +128,7 @@ export async function saveBundle(
     id,
     name,
     packageName,
-    originalFilename: file.name,
+    originalFilename,
     versionName,
     versionCode,
     uploadedAt: new Date().toISOString(),
