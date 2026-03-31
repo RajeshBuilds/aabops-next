@@ -11,6 +11,20 @@ async function ensureStorageDir() {
   await fs.mkdir(STORAGE_DIR, { recursive: true });
 }
 
+async function moveFile(sourcePath: string, destinationPath: string) {
+  try {
+    await fs.rename(sourcePath, destinationPath);
+  } catch (error) {
+    // Happens when temp and storage are on different mounted filesystems.
+    if ((error as NodeJS.ErrnoException).code === "EXDEV") {
+      await fs.copyFile(sourcePath, destinationPath);
+      await fs.rm(sourcePath, { force: true });
+      return;
+    }
+    throw error;
+  }
+}
+
 export async function listBundles(): Promise<BundleMetadata[]> {
   await ensureStorageDir();
   const entries = await fs.readdir(STORAGE_DIR, { withFileTypes: true });
@@ -85,7 +99,7 @@ export async function saveBundleFromPath(
   await fs.mkdir(bundleDir, { recursive: true });
 
   const aabPath = path.join(bundleDir, "app.aab");
-  await fs.rename(sourcePath, aabPath);
+  await moveFile(sourcePath, aabPath);
 
   return finalizeSavedBundle({ id, bundleDir, aabPath, originalFilename, displayName });
 }
